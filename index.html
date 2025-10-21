@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Bug Simulator</title>
+  <style>
+    body { font-family: Inter, system-ui, sans-serif; padding: 2rem; line-height:1.5 }
+    button { margin: .5rem; padding: .5rem 1rem; }
+    .warning { color: #b45309; }
+    .hidden { display:none; }
+  </style>
+</head>
+<body>
+  <h1>Bug simulator — index.html</h1>
+  <p>Utilise les boutons pour provoquer des erreurs et regarde la console / onglet Réseau / Application des DevTools.</p>
+
+  <div>
+    <button id="runtimeErr">🪲 Runtime error (handler)</button>
+    <button id="unhandledRej">❌ Unhandled Promise Rejection</button>
+    <button id="networkFail">🌐 Requête réseau qui échoue</button>
+    <button id="missingRes">🔗 Ressource manquante (404)</button>
+    <button id="syntaxErr">💥 Syntax error via eval</button>
+    <button id="lsCorrupt">🗄️ Corrompre localStorage</button>
+    <button id="slowResponse">🐢 Simuler lenteur (setTimeout)</button>
+    <button id="infiniteLoop" class="warning">⚠️ CPU-bound (danger) — simul</button>
+  </div>
+
+  <hr/>
+
+  <div id="results"></div>
+
+  <script>
+    // Helper pour afficher un message visible
+    function show(msg) {
+      const r = document.getElementById('results');
+      const p = document.createElement('p');
+      p.textContent = msg;
+      r.appendChild(p);
+    }
+
+    // 1) Runtime error - exception non catchée dans un handler
+    document.getElementById('runtimeErr').addEventListener('click', () => {
+      show('Trigger: runtime error (voir console).');
+      // erreur volontaire : appel d'une méthode sur null
+      const el = null;
+      el.doSomething(); // <-- TypeError
+    });
+
+    // 2) Unhandled Promise rejection
+    document.getElementById('unhandledRej').addEventListener('click', () => {
+      show('Trigger: unhandled promise rejection (voir console).');
+      // Promesse rejetée sans catch
+      Promise.reject(new Error('Simulated rejection — aucune gestion'));
+    });
+
+    // 3) Requête réseau qui échoue (fetch vers endpoint inexistant)
+    document.getElementById('networkFail').addEventListener('click', async () => {
+      show('Trigger: fetch vers API non disponible (voir Réseau/Console).');
+      try {
+        const r = await fetch('https://127.0.0.1:9999/api/does-not-exist');
+        show('Fetch response status: ' + r.status);
+      } catch (err) {
+        // on logue ici pour simuler un usage réel
+        console.error('fetch failed:', err);
+        show('Fetch a levé une exception (voir console).');
+      }
+    });
+
+    // 4) Ressource manquante -> 404 CSS/JS (charge un fichier qui n'existe pas)
+    document.getElementById('missingRes').addEventListener('click', () => {
+      show('Trigger: ajout dyn. d’un script manquant (voir Réseau).');
+      const s = document.createElement('script');
+      s.src = '/does-not-exist.js'; // 404
+      document.body.appendChild(s);
+    });
+
+    // 5) Syntax Error via eval
+    document.getElementById('syntaxErr').addEventListener('click', () => {
+      show('Trigger: eval de code invalide (voir console).');
+      try {
+        eval('function ( {'); // syntaxe invalide -> SyntaxError
+      } catch (err) {
+        // note: catch empêche l’erreur non gérée, mais tu peux aussi éviter le try/catch pour produire une erreur globale
+        console.error('Caught syntax error from eval:', err);
+        show('Syntax error attrapé dans le try/catch (console).');
+      }
+    });
+
+    // 6) Corrompre localStorage (valeur attendue malformée)
+    document.getElementById('lsCorrupt').addEventListener('click', () => {
+      localStorage.setItem('auth', '{"accessToken": null, "expires": "not-a-date"}');
+      show('localStorage mis à jour avec valeur "corrompue" (onglet Application).');
+      console.log('localStorage.auth =', localStorage.getItem('auth'));
+    });
+
+    // 7) Simuler lenteur de réponse (setTimeout long)
+    document.getElementById('slowResponse').addEventListener('click', () => {
+      show('Trigger: opération lente (simule délai réseau).');
+      const start = performance.now();
+      // simulation sans bloquer le main thread
+      setTimeout(() => {
+        show('Opération lente terminée après 3s (mesure approx: ' + Math.round(performance.now() - start) + 'ms).');
+      }, 3000);
+    });
+
+    // 8) CPU-bound "infinite loop" simulée (danger)
+    document.getElementById('infiniteLoop').addEventListener('click', () => {
+      show('Trigger: simulation CPU (utiliser avec précaution).');
+      // pour éviter de bloquer complètement le navigateur, on fait une boucle partagée
+      let i = 0;
+      function chunk() {
+        // boucle courte et réentrante via setTimeout pour éviter freeze complet
+        const limit = 5_000_00; // augmente pour plus de CPU
+        for (let j = 0; j < limit; j++) { i++; Math.sqrt(j*i); }
+        show('Progress: i=' + i);
+        // relancer pour simuler travail long (arrêter manuellement en reloadant)
+        setTimeout(chunk, 0);
+      }
+      chunk();
+    });
+
+    // Auto-trigger via query param ?bug=runtimeErr | unhandledRej | networkFail | missingRes | syntaxErr | lsCorrupt | slowResponse | infiniteLoop
+    (function autoTrigger(){
+      const qp = new URLSearchParams(location.search).get('bug');
+      if (!qp) return;
+      const map = {
+        runtimeErr: 'runtimeErr',
+        unhandledRej: 'unhandledRej',
+        networkFail: 'networkFail',
+        missingRes: 'missingRes',
+        syntaxErr: 'syntaxErr',
+        lsCorrupt: 'lsCorrupt',
+        slowResponse: 'slowResponse',
+        infiniteLoop: 'infiniteLoop'
+      };
+      const el = document.getElementById(map[qp]);
+      if (el) setTimeout(()=>el.click(), 400);
+    })();
+  </script>
+</body>
+</html>
+
